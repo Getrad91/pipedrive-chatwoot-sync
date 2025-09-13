@@ -36,7 +36,7 @@ DB_CONFIG = {
 
 def setup_logging():
     """Set up logging"""
-    log_dir = "/home/n8n/pipedrive-chatwoot-sync/logs"
+    log_dir = "/home/ubuntu/repos/pipedrive-chatwoot-sync/logs"
     os.makedirs(log_dir, exist_ok=True)
     
     logging.basicConfig(
@@ -150,6 +150,27 @@ def store_organizations(organizations):
             
     finally:
         conn.close()
+
+def add_labels_to_contact(contact_id, contact_name, logger):
+    """Add customer label to synced contact"""
+    try:
+        labels_url = f"{CHATWOOT_BASE_URL}/contacts/{contact_id}/labels"
+        headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
+        
+        label_data = {'labels': ['customer']}
+        
+        response = requests.post(labels_url, json=label_data, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            logger.info(f"🏷️ Added 'customer' label to {contact_name}")
+            return True
+        else:
+            logger.warning(f"⚠️ Failed to add label to {contact_name}: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Error adding label to {contact_name}: {str(e)}")
+        return False
 
 def sync_to_chatwoot():
     """Sync organizations to Chatwoot"""
@@ -266,13 +287,17 @@ def sync_to_chatwoot():
                             except Exception as e:
                                 logger.warning(f"⚠️ Failed to assign {org['name']} to inbox: {str(e)}")
                         
+                        if add_labels_to_contact(chatwoot_id, org['name'], logger):
+                            logger.info(f"✅ Synced: {org['name']} → Chatwoot ID {chatwoot_id} (with customer label)")
+                        else:
+                            logger.info(f"✅ Synced: {org['name']} → Chatwoot ID {chatwoot_id} (label failed)")
+                        
                         # Mark as synced
                         cursor.execute(
                             "UPDATE organizations SET synced_to_chatwoot = 1, chatwoot_contact_id = %s WHERE pipedrive_org_id = %s",
                             (chatwoot_id, org['pipedrive_org_id'])
                         )
                         synced_count += 1
-                        logger.info(f"✅ Synced: {org['name']} → Chatwoot ID {chatwoot_id}")
                     else:
                         error_count += 1
                         logger.error(f"❌ Failed to sync: {org['name']} - {response.status_code}")
