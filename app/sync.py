@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple, clean Pipedrive to Chatwoot sync you 
+Simple, clean Pipedrive to Chatwoot sync you
 
 Syncs ONLY Customer organizations (label 5) from Pipedrive to Chatwoot
 """
@@ -12,7 +12,6 @@ import json
 import logging
 import requests
 import pymysql
-from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -34,11 +33,12 @@ DB_CONFIG = {
     'charset': 'utf8mb4'
 }
 
+
 def setup_logging():
     """Set up logging"""
     log_dir = "/home/ubuntu/repos/pipedrive-chatwoot-sync/logs"
     os.makedirs(log_dir, exist_ok=True)
-    
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
@@ -49,9 +49,11 @@ def setup_logging():
     )
     return logging.getLogger(__name__)
 
+
 def get_db_connection():
     """Get database connection"""
     return pymysql.connect(**DB_CONFIG)
+
 
 def get_customer_organizations():
     """Get all Customer organizations from Pipedrive"""
@@ -59,7 +61,7 @@ def get_customer_organizations():
     organizations = []
     start = 0
     limit = 100
-    
+
     while True:
         try:
             params = {
@@ -67,33 +69,33 @@ def get_customer_organizations():
                 'start': start,
                 'limit': limit
             }
-            
+
             response = requests.get(f"{PIPEDRIVE_BASE_URL}/organizations", params=params, timeout=30)
             response.raise_for_status()
-            
+
             data = response.json()
             page_orgs = data.get('data', [])
-            
+
             # Filter for Customer organizations only (label 5)
             customer_orgs = [org for org in page_orgs if org.get('label') == 5]
             organizations.extend(customer_orgs)
-            
-            logger.info(f"Page {start//limit + 1}: Found {len(customer_orgs)} Customer organizations")
-            
+
+            logger.info(f"Page {start // limit + 1}: Found {len(customer_orgs)} Customer organizations")
+
             # Check pagination
             pagination = data.get('additional_data', {}).get('pagination', {})
             if not pagination.get('more_items_in_collection', False):
                 break
-                
+
             start = pagination.get('next_start', start + limit)
             time.sleep(1)  # Rate limiting
-            
         except Exception as e:
             logger.error(f"Error fetching organizations: {e}")
             break
-    
+
     logger.info(f"Total Customer organizations found: {len(organizations)}")
     return organizations
+
 
 def clean_organization_data(org):
     """Clean organization data"""
@@ -112,6 +114,7 @@ def clean_organization_data(org):
         'raw_data': json.dumps(org)
     }
 
+
 def normalize_phone(phone):
     """Normalize phone number"""
     if not phone:
@@ -124,65 +127,69 @@ def normalize_phone(phone):
         return ""
     return phone
 
+
 def store_organizations(organizations):
     """Store organizations in database"""
     logger = logging.getLogger(__name__)
     conn = get_db_connection()
-    
+
     try:
         with conn.cursor() as cursor:
             # Clear existing data
             cursor.execute("DELETE FROM organizations")
-            
+
             # Insert new data
             sql = """
             INSERT INTO organizations
-              (pipedrive_org_id, name, phone, support_link, city, country, email, status, data, notes, deal_title, owner_name, synced_to_chatwoot)
+              (pipedrive_org_id, name, phone, support_link, city, country, email, status, data, notes, deal_title,
+               owner_name, synced_to_chatwoot)
             VALUES
-              (%(pipedrive_org_id)s, %(name)s, %(phone)s, %(support_link)s, %(city)s, %(country)s, %(email)s, %(status)s, %(raw_data)s, %(notes)s, %(deal_title)s, %(owner_name)s, 0)
+              (%(pipedrive_org_id)s, %(name)s, %(phone)s, %(support_link)s, %(city)s, %(country)s, %(email)s,
+               %(status)s, %(raw_data)s, %(notes)s, %(deal_title)s, %(owner_name)s, 0)
             """
-            
+
             for org in organizations:
                 cursor.execute(sql, clean_organization_data(org))
-            
+
             conn.commit()
             logger.info(f"Stored {len(organizations)} organizations in database")
-            
     finally:
         conn.close()
+
 
 def add_labels_to_contact(contact_id, contact_name, logger):
     """Add customer label to synced contact"""
     try:
         labels_url = f"{CHATWOOT_BASE_URL}/contacts/{contact_id}/labels"
         headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
-        
+
         label_data = {'labels': ['customer']}
-        
+
         response = requests.post(labels_url, json=label_data, headers=headers, timeout=30)
-        
+
         if response.status_code == 200:
             logger.info(f"🏷️ Added 'customer' label to {contact_name}")
             return True
         else:
             logger.warning(f"⚠️ Failed to add label to {contact_name}: {response.status_code} - {response.text}")
             return False
-            
+
     except Exception as e:
         logger.error(f"❌ Error adding label to {contact_name}: {str(e)}")
         return False
+
 
 def sync_to_chatwoot():
     """Sync organizations to Chatwoot"""
     logger = logging.getLogger(__name__)
     conn = get_db_connection()
-    
+
     try:
         # Get the Customer Database inbox ID
         inboxes_url = f"{CHATWOOT_BASE_URL}/inboxes"
         inboxes_headers = {'Api-Access-Token': CHATWOOT_API_KEY}
         inboxes_response = requests.get(inboxes_url, headers=inboxes_headers, timeout=30)
-        
+
         customer_database_inbox_id = None
         if inboxes_response.status_code == 200:
             inboxes_data = inboxes_response.json()
@@ -193,40 +200,42 @@ def sync_to_chatwoot():
                     customer_database_inbox_id = inbox.get('id')
                     logger.info(f"Using inbox: {inbox.get('name')} (ID: {customer_database_inbox_id})")
                     break
-        
+
         if not customer_database_inbox_id:
             logger.warning("Could not find Customer Database inbox, contacts may not be visible in Chatwoot interface")
-        
+
         with conn.cursor(pymysql.cursors.DictCursor) as cursor:
             cursor.execute("SELECT * FROM organizations WHERE synced_to_chatwoot = 0")
             organizations = cursor.fetchall()
-            
+
             logger.info(f"Syncing {len(organizations)} organizations to Chatwoot")
-            
+
             synced_count = 0
             error_count = 0
-            
+
             for org in organizations:
                 try:
                     # Search for existing contact
                     search_url = f"{CHATWOOT_BASE_URL}/contacts/search"
                     search_params = {'q': org['name']}
                     search_headers = {'Api-Access-Token': CHATWOOT_API_KEY}
-                    
-                    search_response = requests.get(search_url, params=search_params, headers=search_headers, timeout=30)
-                    
+
+                    search_response = requests.get(search_url, params=search_params,
+                                                   headers=search_headers, timeout=30)
+
                     if search_response.status_code == 429:
                         logger.warning("Rate limited, waiting 60 seconds...")
                         time.sleep(60)
-                        search_response = requests.get(search_url, params=search_params, headers=search_headers, timeout=30)
-                    
+                        search_response = requests.get(search_url, params=search_params,
+                                                       headers=search_headers, timeout=30)
+
                     existing_contact = None
                     if search_response.status_code == 200:
                         search_data = search_response.json()
                         contacts = search_data.get('payload', search_data.get('data', []))
                         if contacts:
                             existing_contact = contacts[0]
-                    
+
                     # Prepare contact data
                     contact_data = {
                         'name': org['name'],
@@ -242,22 +251,22 @@ def sync_to_chatwoot():
                             'organization_name': org['name']
                         }
                     }
-                    
+
                     # Create or update contact
                     time.sleep(1)  # Rate limiting
-                    
+
                     if existing_contact:
                         # Update existing contact
                         update_url = f"{CHATWOOT_BASE_URL}/contacts/{existing_contact['id']}"
                         update_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
-                        
+
                         response = requests.put(update_url, json=contact_data, headers=update_headers, timeout=30)
                         chatwoot_id = existing_contact['id']
                     else:
                         # Create new contact
                         create_url = f"{CHATWOOT_BASE_URL}/contacts"
                         create_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
-                        
+
                         response = requests.post(create_url, json=contact_data, headers=create_headers, timeout=30)
                         if response.status_code == 200:
                             response_data = response.json()
@@ -265,36 +274,41 @@ def sync_to_chatwoot():
                             chatwoot_id = response_data.get('payload', {}).get('contact', {}).get('id')
                         else:
                             chatwoot_id = None
-                    
+
                     if response.status_code == 429:
                         logger.warning("Rate limited, waiting 60 seconds...")
                         time.sleep(60)
                         continue
-                    
+
                     if response.status_code in [200, 201]:
                         # Assign contact to Customer Database inbox if we have the inbox ID
                         if chatwoot_id and customer_database_inbox_id:
                             try:
                                 assign_url = f"{CHATWOOT_BASE_URL}/contacts/{chatwoot_id}/contact_inboxes"
-                                assign_data = {'inbox_id': customer_database_inbox_id, 'source_id': f'pipedrive_{chatwoot_id}'}
-                                assign_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
-                                
-                                assign_response = requests.post(assign_url, json=assign_data, headers=assign_headers, timeout=30)
+                                assign_data = {'inbox_id': customer_database_inbox_id,
+                                               'source_id': f'pipedrive_{chatwoot_id}'}
+                                assign_headers = {'Api-Access-Token': CHATWOOT_API_KEY,
+                                                  'Content-Type': 'application/json'}
+
+                                assign_response = requests.post(assign_url, json=assign_data,
+                                                                headers=assign_headers, timeout=30)
                                 if assign_response.status_code == 200:
                                     logger.info(f"✅ Assigned {org['name']} to Customer Database inbox")
                                 else:
-                                    logger.warning(f"⚠️ Could not assign {org['name']} to inbox: {assign_response.status_code}")
+                                    logger.warning(f"⚠️ Could not assign {org['name']} to inbox: "
+                                                   f"{assign_response.status_code}")
                             except Exception as e:
                                 logger.warning(f"⚠️ Failed to assign {org['name']} to inbox: {str(e)}")
-                        
+
                         if add_labels_to_contact(chatwoot_id, org['name'], logger):
                             logger.info(f"✅ Synced: {org['name']} → Chatwoot ID {chatwoot_id} (with customer label)")
                         else:
                             logger.info(f"✅ Synced: {org['name']} → Chatwoot ID {chatwoot_id} (label failed)")
-                        
+
                         # Mark as synced
                         cursor.execute(
-                            "UPDATE organizations SET synced_to_chatwoot = 1, chatwoot_contact_id = %s WHERE pipedrive_org_id = %s",
+                            "UPDATE organizations SET synced_to_chatwoot = 1, chatwoot_contact_id = %s "
+                            "WHERE pipedrive_org_id = %s",
                             (chatwoot_id, org['pipedrive_org_id'])
                         )
                         synced_count += 1
@@ -302,43 +316,44 @@ def sync_to_chatwoot():
                         error_count += 1
                         logger.error(f"❌ Failed to sync: {org['name']} - {response.status_code}")
                         logger.error(f"Response text: {response.text}")
-                
+
                 except Exception as e:
                     error_count += 1
                     logger.error(f"❌ Error syncing {org['name']}: {e}")
                     import traceback
                     logger.error(f"Full error: {traceback.format_exc()}")
-            
+
             conn.commit()
             logger.info(f"Sync completed: {synced_count} synced, {error_count} errors")
-            
     finally:
         conn.close()
+
 
 def main():
     """Main function"""
     logger = setup_logging()
-    
+
     logger.info("🚀 Starting Pipedrive to Chatwoot sync")
     logger.info("=" * 50)
-    
+
     # Step 1: Get Customer organizations from Pipedrive
     logger.info("📥 Fetching Customer organizations from Pipedrive...")
     organizations = get_customer_organizations()
-    
+
     if not organizations:
         logger.error("❌ No Customer organizations found")
         return
-    
+
     # Step 2: Store in database
     logger.info("💾 Storing organizations in database...")
     store_organizations(organizations)
-    
+
     # Step 3: Sync to Chatwoot
     logger.info("🔄 Syncing organizations to Chatwoot...")
     sync_to_chatwoot()
-    
+
     logger.info("✅ Sync completed!")
+
 
 if __name__ == "__main__":
     main()
