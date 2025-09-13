@@ -45,7 +45,6 @@ def setup_logging():
     return get_sync_logger()
 
 
-
 def get_db_connection():
     """Get database connection"""
     return pymysql.connect(**DB_CONFIG)
@@ -403,7 +402,6 @@ def main():
             'ERROR'
         )
         raise
-
 
 
 if __name__ == "__main__":
