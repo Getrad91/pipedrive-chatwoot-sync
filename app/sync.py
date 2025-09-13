@@ -36,7 +36,10 @@ DB_CONFIG = {
 
 def setup_logging():
     """Set up logging"""
-    log_dir = "/app/logs"  # This maps to the mounted volume in docker
+    log_dir = os.getenv('LOG_DIR', 'logs')
+    if not os.path.isabs(log_dir):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        log_dir = os.path.join(script_dir, log_dir)
     os.makedirs(log_dir, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
