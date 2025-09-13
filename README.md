@@ -272,6 +272,7 @@ To set up all automated tasks:
 
 All jobs include proper logging to `logs/` directory with automatic log rotation.
 
+
 ### Docker Compose with Scheduler
 Uncomment the scheduler command in `docker-compose.yml` to run sync every 30 minutes automatically.
 
