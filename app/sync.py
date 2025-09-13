@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """
-<<<<<<< HEAD
-Simple, clean Pipedrive to Chatwoot sync you
-||||||| f1b27bb
-Simple, clean Pipedrive to Chatwoot sync you 
-=======
 Simple, clean Pipedrive to Chatwoot sync
->>>>>>> main
 
 Syncs ONLY Customer organizations (label 5) from Pipedrive to Chatwoot
 """
@@ -241,40 +235,20 @@ def sync_to_chatwoot():
                     if existing_contact:
                         # Update existing contact
                         update_url = f"{CHATWOOT_BASE_URL}/contacts/{existing_contact['id']}"
-<<<<<<< HEAD
-                        update_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
-
-                        response = requests.put(update_url, json=contact_data, headers=update_headers, timeout=30)
-||||||| f1b27bb
-                        update_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
-                        
-                        response = requests.put(update_url, json=contact_data, headers=update_headers, timeout=30)
-=======
                         update_headers = {'Api-Access-Token': CHATWOOT_API_KEY,
                                           'Content-Type': 'application/json'}
 
                         response = requests.put(update_url, json=contact_data,
                                                 headers=update_headers, timeout=30)
->>>>>>> main
                         chatwoot_id = existing_contact['id']
                     else:
                         # Create new contact
                         create_url = f"{CHATWOOT_BASE_URL}/contacts"
-<<<<<<< HEAD
-                        create_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
-
-                        response = requests.post(create_url, json=contact_data, headers=create_headers, timeout=30)
-||||||| f1b27bb
-                        create_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
-                        
-                        response = requests.post(create_url, json=contact_data, headers=create_headers, timeout=30)
-=======
                         create_headers = {'Api-Access-Token': CHATWOOT_API_KEY,
                                           'Content-Type': 'application/json'}
 
                         response = requests.post(create_url, json=contact_data,
                                                  headers=create_headers, timeout=30)
->>>>>>> main
                         if response.status_code == 200:
                             response_data = response.json()
                             # Chatwoot API returns contact ID in payload.contact.id
@@ -292,20 +266,6 @@ def sync_to_chatwoot():
                         if chatwoot_id and customer_database_inbox_id:
                             try:
                                 assign_url = f"{CHATWOOT_BASE_URL}/contacts/{chatwoot_id}/contact_inboxes"
-<<<<<<< HEAD
-                                assign_data = {'inbox_id': customer_database_inbox_id,
-                                               'source_id': f'pipedrive_{chatwoot_id}'}
-                                assign_headers = {'Api-Access-Token': CHATWOOT_API_KEY,
-                                                  'Content-Type': 'application/json'}
-
-                                assign_response = requests.post(assign_url, json=assign_data,
-                                                                headers=assign_headers, timeout=30)
-||||||| f1b27bb
-                                assign_data = {'inbox_id': customer_database_inbox_id, 'source_id': f'pipedrive_{chatwoot_id}'}
-                                assign_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
-                                
-                                assign_response = requests.post(assign_url, json=assign_data, headers=assign_headers, timeout=30)
-=======
                                 assign_data = {
                                     'inbox_id': customer_database_inbox_id,
                                     'source_id': f'pipedrive_{chatwoot_id}'
@@ -318,34 +278,19 @@ def sync_to_chatwoot():
                                 assign_response = requests.post(
                                     assign_url, json=assign_data,
                                     headers=assign_headers, timeout=30)
->>>>>>> main
                                 if assign_response.status_code == 200:
                                     logger.info(f"✅ Assigned {org['name']} to Customer Database inbox")
                                 else:
-<<<<<<< HEAD
-                                    logger.warning(f"⚠️ Could not assign {org['name']} to inbox: "
-                                                   f"{assign_response.status_code}")
-||||||| f1b27bb
-                                    logger.warning(f"⚠️ Could not assign {org['name']} to inbox: {assign_response.status_code}")
-=======
                                     logger.warning(
                                         f"⚠️ Could not assign {org['name']} to inbox: "
                                         f"{assign_response.status_code}")
->>>>>>> main
                             except Exception as e:
                                 logger.warning(f"⚠️ Failed to assign {org['name']} to inbox: {str(e)}")
 
                         # Mark as synced
                         cursor.execute(
-<<<<<<< HEAD
-                            "UPDATE organizations SET synced_to_chatwoot = 1, chatwoot_contact_id = %s "
-                            "WHERE pipedrive_org_id = %s",
-||||||| f1b27bb
-                            "UPDATE organizations SET synced_to_chatwoot = 1, chatwoot_contact_id = %s WHERE pipedrive_org_id = %s",
-=======
                             "UPDATE organizations SET synced_to_chatwoot = 1, "
                             "chatwoot_contact_id = %s WHERE pipedrive_org_id = %s",
->>>>>>> main
                             (chatwoot_id, org['pipedrive_org_id'])
                         )
                         synced_count += 1
@@ -457,7 +402,6 @@ def main():
             'ERROR'
         )
         raise
-
 
 
 if __name__ == "__main__":
