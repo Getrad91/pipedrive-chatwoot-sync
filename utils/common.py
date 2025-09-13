@@ -37,33 +37,38 @@ LOG_BACKUP_COUNT = int(os.getenv('LOG_BACKUP_COUNT', '5'))
 
 def setup_logging(script_name):
     """Set up structured logging with rotating file handlers"""
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
-    os.makedirs(log_dir, exist_ok=True)
+    try:
+        sys.path.append('/app')
+        from logging_config import setup_logger
+        return setup_logger(script_name, f"{script_name}.log")
+    except ImportError:
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+        os.makedirs(log_dir, exist_ok=True)
 
-    logger = logging.getLogger(script_name)
-    logger.setLevel(getattr(logging, LOG_LEVEL.upper()))
+        logger = logging.getLogger(script_name)
+        logger.setLevel(getattr(logging, LOG_LEVEL.upper()))
 
-    if logger.handlers:
+        if logger.handlers:
+            return logger
+
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+
+        file_handler = RotatingFileHandler(
+            os.path.join(log_dir, f"{script_name}.log"),
+            maxBytes=LOG_MAX_BYTES,
+            backupCount=LOG_BACKUP_COUNT
+        )
+        file_handler.setFormatter(formatter)
+
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
         return logger
-
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-
-    file_handler = RotatingFileHandler(
-        os.path.join(log_dir, f"{script_name}.log"),
-        maxBytes=LOG_MAX_BYTES,
-        backupCount=LOG_BACKUP_COUNT
-    )
-    file_handler.setFormatter(formatter)
-
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-
-    return logger
 
 
 def get_db_connection():

@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
+<<<<<<< HEAD
 Simple, clean Pipedrive to Chatwoot sync you
+||||||| f1b27bb
+Simple, clean Pipedrive to Chatwoot sync you 
+=======
+Simple, clean Pipedrive to Chatwoot sync
+>>>>>>> main
 
 Syncs ONLY Customer organizations (label 5) from Pipedrive to Chatwoot
 """
@@ -12,7 +18,13 @@ import json
 import logging
 import requests
 import pymysql
+import pymysql.cursors
+from datetime import datetime
 from dotenv import load_dotenv
+
+sys.path.append('/app')
+from logging_config import get_sync_logger, log_with_extra  # noqa: E402
+from notifications import send_sync_alert  # noqa: E402
 
 # Load environment variables
 load_dotenv()
@@ -35,19 +47,8 @@ DB_CONFIG = {
 
 
 def setup_logging():
-    """Set up logging"""
-    log_dir = "/home/n8n/pipedrive-chatwoot-sync/logs"
-    os.makedirs(log_dir, exist_ok=True)
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(f"{log_dir}/sync.log"),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-    return logging.getLogger(__name__)
+    """Set up logging using centralized configuration"""
+    return get_sync_logger()
 
 
 def get_db_connection():
@@ -142,11 +143,13 @@ def store_organizations(organizations):
             # Insert new data
             sql = """
             INSERT INTO organizations
-              (pipedrive_org_id, name, phone, support_link, city, country, email, status, data, notes,
-               deal_title, owner_name, synced_to_chatwoot)
+              (pipedrive_org_id, name, phone, support_link, city, country,
+               email, status, data, notes, deal_title, owner_name,
+               synced_to_chatwoot)
             VALUES
-              (%(pipedrive_org_id)s, %(name)s, %(phone)s, %(support_link)s, %(city)s, %(country)s,
-               %(email)s, %(status)s, %(raw_data)s, %(notes)s, %(deal_title)s, %(owner_name)s, 0)
+              (%(pipedrive_org_id)s, %(name)s, %(phone)s, %(support_link)s,
+               %(city)s, %(country)s, %(email)s, %(status)s, %(raw_data)s,
+               %(notes)s, %(deal_title)s, %(owner_name)s, 0)
             """
 
             for org in organizations:
@@ -238,16 +241,40 @@ def sync_to_chatwoot():
                     if existing_contact:
                         # Update existing contact
                         update_url = f"{CHATWOOT_BASE_URL}/contacts/{existing_contact['id']}"
+<<<<<<< HEAD
                         update_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
 
                         response = requests.put(update_url, json=contact_data, headers=update_headers, timeout=30)
+||||||| f1b27bb
+                        update_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
+                        
+                        response = requests.put(update_url, json=contact_data, headers=update_headers, timeout=30)
+=======
+                        update_headers = {'Api-Access-Token': CHATWOOT_API_KEY,
+                                          'Content-Type': 'application/json'}
+
+                        response = requests.put(update_url, json=contact_data,
+                                                headers=update_headers, timeout=30)
+>>>>>>> main
                         chatwoot_id = existing_contact['id']
                     else:
                         # Create new contact
                         create_url = f"{CHATWOOT_BASE_URL}/contacts"
+<<<<<<< HEAD
                         create_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
 
                         response = requests.post(create_url, json=contact_data, headers=create_headers, timeout=30)
+||||||| f1b27bb
+                        create_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
+                        
+                        response = requests.post(create_url, json=contact_data, headers=create_headers, timeout=30)
+=======
+                        create_headers = {'Api-Access-Token': CHATWOOT_API_KEY,
+                                          'Content-Type': 'application/json'}
+
+                        response = requests.post(create_url, json=contact_data,
+                                                 headers=create_headers, timeout=30)
+>>>>>>> main
                         if response.status_code == 200:
                             response_data = response.json()
                             # Chatwoot API returns contact ID in payload.contact.id
@@ -265,6 +292,7 @@ def sync_to_chatwoot():
                         if chatwoot_id and customer_database_inbox_id:
                             try:
                                 assign_url = f"{CHATWOOT_BASE_URL}/contacts/{chatwoot_id}/contact_inboxes"
+<<<<<<< HEAD
                                 assign_data = {'inbox_id': customer_database_inbox_id,
                                                'source_id': f'pipedrive_{chatwoot_id}'}
                                 assign_headers = {'Api-Access-Token': CHATWOOT_API_KEY,
@@ -272,18 +300,52 @@ def sync_to_chatwoot():
 
                                 assign_response = requests.post(assign_url, json=assign_data,
                                                                 headers=assign_headers, timeout=30)
+||||||| f1b27bb
+                                assign_data = {'inbox_id': customer_database_inbox_id, 'source_id': f'pipedrive_{chatwoot_id}'}
+                                assign_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
+                                
+                                assign_response = requests.post(assign_url, json=assign_data, headers=assign_headers, timeout=30)
+=======
+                                assign_data = {
+                                    'inbox_id': customer_database_inbox_id,
+                                    'source_id': f'pipedrive_{chatwoot_id}'
+                                }
+                                assign_headers = {
+                                    'Api-Access-Token': CHATWOOT_API_KEY,
+                                    'Content-Type': 'application/json'
+                                }
+
+                                assign_response = requests.post(
+                                    assign_url, json=assign_data,
+                                    headers=assign_headers, timeout=30)
+>>>>>>> main
                                 if assign_response.status_code == 200:
                                     logger.info(f"✅ Assigned {org['name']} to Customer Database inbox")
                                 else:
+<<<<<<< HEAD
                                     logger.warning(f"⚠️ Could not assign {org['name']} to inbox: "
                                                    f"{assign_response.status_code}")
+||||||| f1b27bb
+                                    logger.warning(f"⚠️ Could not assign {org['name']} to inbox: {assign_response.status_code}")
+=======
+                                    logger.warning(
+                                        f"⚠️ Could not assign {org['name']} to inbox: "
+                                        f"{assign_response.status_code}")
+>>>>>>> main
                             except Exception as e:
                                 logger.warning(f"⚠️ Failed to assign {org['name']} to inbox: {str(e)}")
 
                         # Mark as synced
                         cursor.execute(
+<<<<<<< HEAD
                             "UPDATE organizations SET synced_to_chatwoot = 1, chatwoot_contact_id = %s "
                             "WHERE pipedrive_org_id = %s",
+||||||| f1b27bb
+                            "UPDATE organizations SET synced_to_chatwoot = 1, chatwoot_contact_id = %s WHERE pipedrive_org_id = %s",
+=======
+                            "UPDATE organizations SET synced_to_chatwoot = 1, "
+                            "chatwoot_contact_id = %s WHERE pipedrive_org_id = %s",
+>>>>>>> main
                             (chatwoot_id, org['pipedrive_org_id'])
                         )
                         synced_count += 1
@@ -302,6 +364,51 @@ def sync_to_chatwoot():
             conn.commit()
             logger.info(f"Sync completed: {synced_count} synced, {error_count} errors")
 
+            try:
+                with conn.cursor() as log_cursor:
+                    total_processed = synced_count + error_count
+                    status = 'success' if error_count == 0 else (
+                        'partial' if synced_count > 0 else 'error')
+
+                    log_cursor.execute("""
+                        INSERT INTO sync_log (sync_type, status, records_processed,
+                                            records_synced, error_message, completed_at)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (
+                        'organizations',
+                        status,
+                        total_processed,
+                        synced_count,
+                        f"{error_count} errors occurred" if error_count > 0 else None,
+                        datetime.now()
+                    ))
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Failed to log sync results: {e}")
+
+            if total_processed > 0:
+                error_rate = (error_count / total_processed) * 100
+                if error_rate > 10:  # Alert if more than 10% errors
+                    send_sync_alert(
+                        'sync',
+                        'high error rate',
+                        f"Sync completed with high error rate: {error_rate:.1f}%",
+                        {
+                            'total_processed': total_processed,
+                            'synced_count': synced_count,
+                            'error_count': error_count,
+                            'error_rate': f"{error_rate:.1f}%"
+                        },
+                        'WARNING'
+                    )
+
+            log_with_extra(logger, 20, "Sync operation completed", {
+                'synced_count': synced_count,
+                'error_count': error_count,
+                'total_processed': total_processed,
+                'error_rate': f"{(error_count / total_processed * 100):.1f}%" if total_processed > 0 else "0%"
+            })
+
     finally:
         conn.close()
 
@@ -313,23 +420,44 @@ def main():
     logger.info("🚀 Starting Pipedrive to Chatwoot sync")
     logger.info("=" * 50)
 
-    # Step 1: Get Customer organizations from Pipedrive
-    logger.info("📥 Fetching Customer organizations from Pipedrive...")
-    organizations = get_customer_organizations()
+    try:
+        # Step 1: Get Customer organizations from Pipedrive
+        logger.info("📥 Fetching Customer organizations from Pipedrive...")
+        organizations = get_customer_organizations()
 
-    if not organizations:
-        logger.error("❌ No Customer organizations found")
-        return
+        if not organizations:
+            logger.error("❌ No Customer organizations found")
+            send_sync_alert(
+                'sync',
+                'no data',
+                "No Customer organizations found in Pipedrive",
+                {'label_filter': 5},
+                'WARNING'
+            )
+            return
 
-    # Step 2: Store in database
-    logger.info("💾 Storing organizations in database...")
-    store_organizations(organizations)
+        # Step 2: Store in database
+        logger.info("💾 Storing organizations in database...")
+        store_organizations(organizations)
 
-    # Step 3: Sync to Chatwoot
-    logger.info("🔄 Syncing organizations to Chatwoot...")
-    sync_to_chatwoot()
+        # Step 3: Sync to Chatwoot
+        logger.info("🔄 Syncing organizations to Chatwoot...")
+        sync_to_chatwoot()
 
-    logger.info("✅ Sync completed!")
+        logger.info("✅ Sync completed!")
+
+    except Exception as e:
+        error_msg = f"Sync process failed with critical error: {e}"
+        logger.error(error_msg)
+        send_sync_alert(
+            'sync',
+            'system error',
+            error_msg,
+            {'error': str(e)},
+            'ERROR'
+        )
+        raise
+
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+
+*/30 8-17 * * 1-5 cd /home/ubuntu/repos/pipedrive-chatwoot-sync && ./scripts/auto-sync.sh
+
+0 2 * * * cd /home/ubuntu/repos/pipedrive-chatwoot-sync && ./scripts/storage-management.sh cleanup >> /home/ubuntu/repos/pipedrive-chatwoot-sync/logs/storage-cleanup.log 2>&1
+
+0 */4 * * * cd /home/ubuntu/repos/pipedrive-chatwoot-sync && ./scripts/storage-management.sh monitor >> /home/ubuntu/repos/pipedrive-chatwoot-sync/logs/storage-monitor.log 2>&1
+
+0 3 * * * cd /home/ubuntu/repos/pipedrive-chatwoot-sync && ./scripts/manage.sh backup >> /home/ubuntu/repos/pipedrive-chatwoot-sync/logs/backup.log 2>&1
+
+0 1 * * 0 cd /home/ubuntu/repos/pipedrive-chatwoot-sync && python3 assign_contacts_to_support_inbox.py >> /home/ubuntu/repos/pipedrive-chatwoot-sync/logs/inbox-assignment.log 2>&1
+0 1 * * 0 cd /home/ubuntu/repos/pipedrive-chatwoot-sync && python3 sync_common_support.py >> /home/ubuntu/repos/pipedrive-chatwoot-sync/logs/common-support-sync.log 2>&1
+
