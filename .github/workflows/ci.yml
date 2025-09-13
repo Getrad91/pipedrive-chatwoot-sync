@@ -32,7 +32,7 @@ jobs:
     
     - name: Validate Docker Compose
       run: |
-        docker-compose config
+        docker compose config
     
     - name: Test Docker build
       run: |
