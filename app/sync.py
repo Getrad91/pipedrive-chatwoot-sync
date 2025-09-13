@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple, clean Pipedrive to Chatwoot sync you
+Simple, clean Pipedrive to Chatwoot sync
 
 Syncs ONLY Customer organizations (label 5) from Pipedrive to Chatwoot
 """
@@ -404,8 +404,8 @@ def sync_to_chatwoot():
                             chatwoot_id = None
 
                     if response.status_code in [200, 201]:
-                        # Assign contact to Customer Database inbox if we have
-                        # the inbox ID
+                        # Assign contact to Customer Database inbox if we
+                        # have the inbox ID
                         if chatwoot_id and customer_database_inbox_id:
                             try:
                                 def assign_contact():
