@@ -25,6 +25,7 @@ from utils.common import (
 SCRIPT_NAME = "assign_contacts_to_support_inbox"
 CUSTOMER_DATABASE_INBOX_ID = 9
 
+
 @retry_with_backoff()
 def assign_contact_to_inbox(session, contact_id, contact_name, inbox_id, logger):
     """Assign a contact to the specified inbox with retry logic"""
@@ -90,9 +91,9 @@ def main():
     parser = argparse.ArgumentParser(description='Assign contacts to support inbox')
     parser.add_argument('--inbox-id', type=int, default=CUSTOMER_DATABASE_INBOX_ID,
                         help=f'Target inbox ID (default: {CUSTOMER_DATABASE_INBOX_ID})')
-    parser.add_argument('--batch-size', type=int, 
+    parser.add_argument('--batch-size', type=int,
                         help='Batch size for processing contacts')
-    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], 
+    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging level')
     args = parser.parse_args()
 
@@ -124,8 +125,8 @@ def main():
 
             logger.info(f"📊 Found {len(contacts)} contacts to assign")
 
-            progress_reporter = ProgressReporter(len(contacts), logger, 
-                                                "Assigning contacts to inbox")
+            progress_reporter = ProgressReporter(len(contacts), logger,
+                                                 "Assigning contacts to inbox")
             batch_size = args.batch_size if args.batch_size else None
 
             for batch in process_in_batches(contacts, batch_size):
@@ -134,8 +135,8 @@ def main():
             progress_reporter.log_summary()
 
             if progress_reporter.successful > 0:
-                base_url = CHATWOOT_BASE_URL.replace('/api/v1/accounts/2', 
-                                                   '/app/accounts/2/contacts')
+                base_url = CHATWOOT_BASE_URL.replace('/api/v1/accounts/2',
+                                                     '/app/accounts/2/contacts')
                 logger.info(f"🔍 Check the contacts at: {base_url}")
 
     except Exception as e:

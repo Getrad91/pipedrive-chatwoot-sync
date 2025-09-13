@@ -25,6 +25,7 @@ from utils.common import (
 
 SCRIPT_NAME = "fix_inbox_assignment"
 
+
 @retry_with_backoff()
 def get_inboxes(session, logger):
     """Get all available inboxes"""
@@ -51,6 +52,7 @@ def find_support_inbox(inboxes, logger):
     logger.warning("Could not find support inbox")
     return None, None
 
+
 @retry_with_backoff()
 def get_contact_inboxes(session, contact_id, logger):
     """Get current inbox assignments for a contact"""
@@ -63,6 +65,7 @@ def get_contact_inboxes(session, contact_id, logger):
     else:
         logger.debug(f"Could not fetch inbox assignments for contact {contact_id}: {response.status_code}")
         return []
+
 
 @retry_with_backoff()
 def assign_contact_to_inbox(session, contact_id, inbox_id, contact_name, logger):
@@ -134,9 +137,9 @@ def main():
     parser.add_argument('--target-inbox-id', type=int,
                         help='Specific inbox ID to assign contacts to '
                              '(auto-detects support inbox if not provided)')
-    parser.add_argument('--batch-size', type=int, 
+    parser.add_argument('--batch-size', type=int,
                         help='Batch size for processing contacts')
-    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], 
+    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging level')
     args = parser.parse_args()
 
@@ -181,12 +184,14 @@ def main():
 
             logger.info(f"📊 Found {len(contacts)} contacts to check")
 
-            operation_name = "Checking inbox assignments (DRY RUN)" if args.dry_run else "Fixing inbox assignments"
+            operation_name = ("Checking inbox assignments (DRY RUN)" if args.dry_run
+                              else "Fixing inbox assignments")
             progress_reporter = ProgressReporter(len(contacts), logger, operation_name)
             batch_size = args.batch_size if args.batch_size else None
 
             for batch in process_in_batches(contacts, batch_size):
-                process_contact_batch(session, batch, target_inbox_id, inbox_name, args.dry_run, logger, progress_reporter)
+                process_contact_batch(session, batch, target_inbox_id, inbox_name,
+                                      args.dry_run, logger, progress_reporter)
 
             progress_reporter.log_summary()
 

@@ -24,6 +24,7 @@ from utils.common import (
 
 SCRIPT_NAME = "sync_common_support"
 
+
 @retry_with_backoff()
 def sync_common_support(session, contact_id, contact_name, common_support_link, logger):
     """Sync Common Support Link to Chatwoot with retry logic"""
@@ -99,9 +100,9 @@ def process_contact_batch(session, contacts_batch, logger, progress_reporter):
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(description='Sync Common Support Links from Pipedrive to Chatwoot')
-    parser.add_argument('--batch-size', type=int, 
+    parser.add_argument('--batch-size', type=int,
                         help='Batch size for processing contacts')
-    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], 
+    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging level')
     args = parser.parse_args()
 
@@ -135,8 +136,8 @@ def main():
 
             logger.info(f"📊 Found {len(contacts)} contacts to sync")
 
-            progress_reporter = ProgressReporter(len(contacts), logger, 
-                                                "Syncing Common Support Links")
+            progress_reporter = ProgressReporter(len(contacts), logger,
+                                                 "Syncing Common Support Links")
             batch_size = args.batch_size if args.batch_size else None
 
             for batch in process_in_batches(contacts, batch_size):
@@ -147,7 +148,7 @@ def main():
             if progress_reporter.successful > 0:
                 logger.info("🎉 Common Support Links have been synced to Chatwoot!")
                 logger.info("Check the Chatwoot interface for the updated "
-                          "Common Support fields.")
+                            "Common Support fields.")
 
     except Exception as e:
         logger.error(f"Database error: {e}")

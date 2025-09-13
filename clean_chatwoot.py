@@ -22,6 +22,7 @@ from utils.common import (
 
 SCRIPT_NAME = "clean_chatwoot"
 
+
 @retry_with_backoff()
 def get_contacts_page(session, page, per_page, logger):
     """Get a page of contacts from Chatwoot with retry logic"""
@@ -106,9 +107,9 @@ def main():
     parser = argparse.ArgumentParser(description='Clean all contacts from Chatwoot')
     parser.add_argument('--confirm', action='store_true', required=True,
                         help='Required flag to confirm deletion of ALL contacts')
-    parser.add_argument('--batch-size', type=int, 
+    parser.add_argument('--batch-size', type=int,
                         help='Batch size for deletion processing')
-    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], 
+    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging level')
     args = parser.parse_args()
 
