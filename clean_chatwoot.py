@@ -1,97 +1,169 @@
 #!/usr/bin/env python3
 """
-Simple script to clean all contacts from Chatwoot
+Production-ready maintenance script to clean/remove all contacts from Chatwoot.
+
+This script provides safe contact cleanup with:
+- Structured logging with rotating file handlers
+- Connection pooling with requests.Session
+- Safeguard: requires explicit --confirm flag before deletion
+- Batch deletion to avoid rate-limit issues
+- Logs all deleted contact IDs for audit trail
+- Error handling with retries and exponential backoff
 """
 
-import os
-import requests
 import time
-from dotenv import load_dotenv
+import logging
+import argparse
+from utils.common import (
+    setup_logging, get_http_session, retry_with_backoff, 
+    process_in_batches, ProgressReporter, CHATWOOT_BASE_URL, 
+    validate_api_token
+)
 
-load_dotenv()
+SCRIPT_NAME = "clean_chatwoot"
 
-CHATWOOT_API_KEY = os.getenv('CHATWOOT_API_KEY')
-CHATWOOT_BASE_URL = os.getenv('CHATWOOT_BASE_URL', 'https://support.liveport.com.au/api/v1/accounts/2')
+@retry_with_backoff()
+def get_contacts_page(session, page, per_page, logger):
+    """Get a page of contacts from Chatwoot with retry logic"""
+    url = f"{CHATWOOT_BASE_URL}/contacts"
+    params = {'page': page, 'per_page': per_page}
+    
+    logger.debug(f"Fetching page {page}...")
+    response = session.get(url, params=params, timeout=30)
+    
+    if response.status_code != 200:
+        logger.error(f"Error fetching page {page}: {response.status_code}")
+        return []
+    
+    data = response.json()
+    contacts = data.get('payload', data.get('data', []))
+    logger.debug(f"Found {len(contacts)} contacts on page {page}")
+    
+    return contacts
 
-def get_all_contacts():
-    """Get all contacts from Chatwoot"""
+def get_all_contacts(session, logger):
+    """Get all contacts from Chatwoot with pagination"""
     all_contacts = []
     page = 1
+    per_page = 50
+    
+    logger.info("📄 Fetching all contacts from Chatwoot...")
     
     while True:
-        url = f"{CHATWOOT_BASE_URL}/contacts"
-        params = {'page': page, 'per_page': 50}
-        headers = {'Api-Access-Token': CHATWOOT_API_KEY}
-        
-        print(f"📄 Fetching page {page}...")
-        response = requests.get(url, params=params, headers=headers, timeout=30)
-        
-        if response.status_code != 200:
-            print(f"❌ Error: {response.status_code}")
-            break
-        
-        data = response.json()
-        contacts = data.get('payload', data.get('data', []))
+        contacts = get_contacts_page(session, page, per_page, logger)
         
         if not contacts:
-            print("✅ No more contacts found")
+            logger.info("✅ No more contacts found")
             break
         
         all_contacts.extend(contacts)
-        print(f"   Found {len(contacts)} contacts")
+        logger.info(f"Page {page}: Found {len(contacts)} contacts (Total: {len(all_contacts)})")
         
         page += 1
-        time.sleep(1)
+        time.sleep(0.5)
     
     return all_contacts
 
-def delete_contact(contact_id, contact_name):
-    """Delete a single contact"""
+@retry_with_backoff()
+def delete_contact(session, contact_id, contact_name, logger):
+    """Delete a single contact with retry logic"""
     url = f"{CHATWOOT_BASE_URL}/contacts/{contact_id}"
-    headers = {'Api-Access-Token': CHATWOOT_API_KEY}
     
-    response = requests.delete(url, headers=headers, timeout=30)
+    response = session.delete(url, timeout=30)
     
     if response.status_code in [200, 204]:
+        logger.info(f"✅ Deleted contact: {contact_name} (ID: {contact_id})")
         return True
     else:
-        print(f"❌ Failed to delete {contact_name}: {response.status_code}")
+        logger.error(f"Failed to delete {contact_name} (ID: {contact_id}): {response.status_code}")
         return False
 
-def main():
-    """Main function"""
-    print("🧹 Chatwoot Contact Cleanup")
-    print("=" * 30)
-    
-    # Get all contacts
-    contacts = get_all_contacts()
-    
-    if not contacts:
-        print("✅ No contacts found to delete")
-        return
-    
-    print(f"📊 Found {len(contacts)} contacts to delete")
-    
-    # Confirm deletion
-    confirm = input(f"\nDelete ALL {len(contacts)} contacts? (type 'YES' to confirm): ")
-    if confirm != "YES":
-        print("❌ Operation cancelled")
-        return
-    
-    # Delete contacts
-    deleted = 0
-    for i, contact in enumerate(contacts, 1):
+def process_deletion_batch(session, contacts_batch, logger, progress_reporter):
+    """Process a batch of contacts for deletion"""
+    for contact in contacts_batch:
         contact_id = contact['id']
         contact_name = contact.get('name', f'Contact {contact_id}')
         
-        print(f"[{i}/{len(contacts)}] Deleting: {contact_name}")
+        progress_reporter.log_progress()
         
-        if delete_contact(contact_id, contact_name):
-            deleted += 1
+        try:
+            if delete_contact(session, contact_id, contact_name, logger):
+                progress_reporter.update(success=True)
+            else:
+                progress_reporter.update(failed=True)
+        except Exception as e:
+            logger.error(f"Error deleting {contact_name}: {e}")
+            progress_reporter.update(failed=True)
         
-        time.sleep(1)
+        time.sleep(0.5)
+
+def main():
+    """Main function"""
+    parser = argparse.ArgumentParser(description='Clean all contacts from Chatwoot')
+    parser.add_argument('--confirm', action='store_true', required=True,
+                       help='Required flag to confirm deletion of ALL contacts')
+    parser.add_argument('--batch-size', type=int, help='Batch size for deletion processing')
+    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], help='Logging level')
+    args = parser.parse_args()
     
-    print(f"\n✅ Deleted {deleted} contacts")
+    logger = setup_logging(SCRIPT_NAME)
+    if args.log_level:
+        logger.setLevel(getattr(logging, args.log_level))
+    
+    logger.info("🧹 Starting Chatwoot Contact Cleanup")
+    logger.info("=" * 50)
+    
+    if not args.confirm:
+        logger.error("❌ --confirm flag is required to proceed with deletion")
+        return 1
+    
+    session = get_http_session()
+    
+    if not validate_api_token(session, logger):
+        logger.error("❌ API token validation failed. Exiting.")
+        return 1
+    
+    try:
+        contacts = get_all_contacts(session, logger)
+        
+        if not contacts:
+            logger.info("✅ No contacts found to delete")
+            return 0
+        
+        logger.info(f"📊 Found {len(contacts)} contacts to delete")
+        logger.warning("⚠️ This will DELETE ALL contacts from Chatwoot!")
+        
+        final_confirm = input(f"\nType 'DELETE ALL {len(contacts)} CONTACTS' to proceed: ")
+        if final_confirm != f"DELETE ALL {len(contacts)} CONTACTS":
+            logger.info("❌ Operation cancelled by user")
+            return 0
+        
+        logger.info("🗑️ Starting contact deletion...")
+        
+        progress_reporter = ProgressReporter(len(contacts), logger, "Deleting contacts")
+        batch_size = args.batch_size if args.batch_size else None
+        
+        for batch in process_in_batches(contacts, batch_size):
+            process_deletion_batch(session, batch, logger, progress_reporter)
+        
+        progress_reporter.log_summary()
+        
+        if progress_reporter.successful > 0:
+            logger.info(f"🎉 Successfully deleted {progress_reporter.successful} contacts")
+        
+        if progress_reporter.failed > 0:
+            logger.warning(f"⚠️ Failed to delete {progress_reporter.failed} contacts")
+        
+    except KeyboardInterrupt:
+        logger.info("❌ Operation cancelled by user (Ctrl+C)")
+        return 1
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return 1
+    finally:
+        session.close()
+    
+    return 0
 
 if __name__ == "__main__":
-    main()
+    exit(main())
