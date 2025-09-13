@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple, clean Pipedrive to Chatwoot sync you
+Simple, clean Pipedrive to Chatwoot sync
 
 Syncs ONLY Customer organizations (label 5) from Pipedrive to Chatwoot
 """
@@ -141,11 +141,11 @@ def store_organizations(organizations):
             # Insert new data
             sql = """
             INSERT INTO organizations
-              (pipedrive_org_id, name, phone, support_link, city, country, email, status, data, notes, deal_title,
-               owner_name, synced_to_chatwoot)
+              (pipedrive_org_id, name, phone, support_link, city, country, email, status, data, notes,
+               deal_title, owner_name, synced_to_chatwoot)
             VALUES
-              (%(pipedrive_org_id)s, %(name)s, %(phone)s, %(support_link)s, %(city)s, %(country)s, %(email)s,
-               %(status)s, %(raw_data)s, %(notes)s, %(deal_title)s, %(owner_name)s, 0)
+              (%(pipedrive_org_id)s, %(name)s, %(phone)s, %(support_link)s, %(city)s, %(country)s,
+               %(email)s, %(status)s, %(raw_data)s, %(notes)s, %(deal_title)s, %(owner_name)s, 0)
             """
 
             for org in organizations:
@@ -258,14 +258,16 @@ def sync_to_chatwoot():
                     if existing_contact:
                         # Update existing contact
                         update_url = f"{CHATWOOT_BASE_URL}/contacts/{existing_contact['id']}"
-                        update_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
+                        update_headers = {'Api-Access-Token': CHATWOOT_API_KEY,
+                                          'Content-Type': 'application/json'}
 
                         response = requests.put(update_url, json=contact_data, headers=update_headers, timeout=30)
                         chatwoot_id = existing_contact['id']
                     else:
                         # Create new contact
                         create_url = f"{CHATWOOT_BASE_URL}/contacts"
-                        create_headers = {'Api-Access-Token': CHATWOOT_API_KEY, 'Content-Type': 'application/json'}
+                        create_headers = {'Api-Access-Token': CHATWOOT_API_KEY,
+                                          'Content-Type': 'application/json'}
 
                         response = requests.post(create_url, json=contact_data, headers=create_headers, timeout=30)
                         if response.status_code == 200:
@@ -301,9 +303,11 @@ def sync_to_chatwoot():
                                 logger.warning(f"⚠️ Failed to assign {org['name']} to inbox: {str(e)}")
 
                         if add_labels_to_contact(chatwoot_id, org['name'], logger):
-                            logger.info(f"✅ Synced: {org['name']} → Chatwoot ID {chatwoot_id} (with customer label)")
+                            logger.info(f"✅ Synced: {org['name']} → Chatwoot ID {chatwoot_id} "
+                                        f"(with customer label)")
                         else:
-                            logger.info(f"✅ Synced: {org['name']} → Chatwoot ID {chatwoot_id} (label failed)")
+                            logger.info(f"✅ Synced: {org['name']} → Chatwoot ID {chatwoot_id} "
+                                        f"(label failed)")
 
                         # Mark as synced
                         cursor.execute(
