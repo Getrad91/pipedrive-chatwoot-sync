@@ -43,6 +43,9 @@ show_usage() {
     echo "  status      Show service status"
     echo "  logs        Show application logs"
     echo "  sync        Run manual sync"
+    echo "  monitor     Run health check manually"
+    echo "  test-alerts Test Google Chat notifications"
+    echo "  monitor-logs View monitoring logs"
     echo "  db          Open MySQL shell"
     echo "  backup      Backup database"
     echo "  restore     Restore database from backup"
@@ -110,6 +113,38 @@ run_sync() {
     print_header "Running Manual Sync"
     docker-compose exec sync-app python sync.py
     print_status "Sync completed"
+}
+
+# Function to run health check
+run_monitor() {
+    if ! check_services; then
+        exit 1
+    fi
+    
+    print_header "Running Health Check"
+    docker-compose exec monitor python monitor.py
+    print_status "Health check completed"
+}
+
+# Function to test alerts
+test_alerts() {
+    if ! check_services; then
+        exit 1
+    fi
+    
+    print_header "Testing Google Chat Notifications"
+    docker-compose exec monitor python -c "from notifications import test_notifications; print('✅ Success' if test_notifications() else '❌ Failed')"
+    print_status "Alert test completed"
+}
+
+# Function to show monitoring logs
+show_monitor_logs() {
+    if ! check_services; then
+        exit 1
+    fi
+    
+    print_header "Monitoring Logs (Press Ctrl+C to exit)"
+    docker-compose logs -f monitor
 }
 
 # Function to open MySQL shell
@@ -219,6 +254,15 @@ case "${1:-help}" in
         ;;
     sync)
         run_sync
+        ;;
+    monitor)
+        run_monitor
+        ;;
+    test-alerts)
+        test_alerts
+        ;;
+    monitor-logs)
+        show_monitor_logs
         ;;
     db)
         open_db_shell
