@@ -245,15 +245,32 @@ pipedrive-chatwoot-sync/
 ## 🔄 Automation
 
 ### Cron Job Setup
-To run sync automatically every 30 minutes:
+To set up all automated tasks:
 
 ```bash
-# Add to crontab
-crontab -e
+# Run the comprehensive cron setup script
+./scripts/setup-cron.sh
 
-# Add this line:
-*/30 * * * * cd /home/n8n/pipedrive-chatwoot-sync && ./scripts/manage.sh sync
+# If crontab is not available, the script will save configuration to crontab.txt
+# Install manually with: crontab crontab.txt
+
+# Monitor cron job health:
+./scripts/monitor-cron.sh
+
+# Test individual scripts:
+./scripts/auto-sync.sh      # Automated sync with logging
+./scripts/manual-sync.sh    # Manual sync with console output
 ```
+
+#### Scheduled Jobs
+- **Main sync**: Every 30 minutes during business hours (8am-5pm, weekdays)
+- **Storage cleanup**: Daily at 2 AM
+- **Storage monitoring**: Every 4 hours  
+- **Database backup**: Daily at 3 AM
+- **Inbox assignment**: Weekly on Sundays at 1 AM
+- **Common support sync**: Weekly on Sundays at 1 AM
+
+All jobs include proper logging to `logs/` directory with automatic log rotation.
 
 ### Docker Compose with Scheduler
 Uncomment the scheduler command in `docker-compose.yml` to run sync every 30 minutes automatically.

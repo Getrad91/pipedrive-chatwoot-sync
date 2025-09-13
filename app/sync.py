@@ -36,7 +36,7 @@ DB_CONFIG = {
 
 def setup_logging():
     """Set up logging"""
-    log_dir = "/home/n8n/pipedrive-chatwoot-sync/logs"
+    log_dir = "/app/logs"  # This maps to the mounted volume in docker
     os.makedirs(log_dir, exist_ok=True)
     
     logging.basicConfig(
