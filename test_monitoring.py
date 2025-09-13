@@ -11,7 +11,7 @@ def test_notifications():
     print("🧪 Testing Google Chat notifications...")
     
     try:
-        from notifications import test_notifications
+        from app.notifications import test_notifications
         result = test_notifications()
         if result:
             print("✅ Google Chat test successful!")
@@ -32,7 +32,7 @@ def test_monitor_validation():
     os.environ['MYSQL_PASSWORD'] = 'test_password'
     
     try:
-        from monitor import SyncMonitor
+        from app.monitor import SyncMonitor
         monitor = SyncMonitor()
         
         pipedrive_healthy, pipedrive_data = monitor.check_pipedrive_api()
@@ -59,9 +59,9 @@ def test_module_imports():
     print("🧪 Testing module imports...")
     
     modules = [
-        'notifications',
-        'logging_config', 
-        'monitor'
+        'app.notifications',
+        'app.logging_config', 
+        'app.monitor'
     ]
     
     success = True

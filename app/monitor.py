@@ -7,8 +7,8 @@ import pymysql
 import pymysql.cursors
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
-from logging_config import get_monitor_logger, log_with_extra
-from notifications import send_sync_alert
+from .logging_config import get_monitor_logger, log_with_extra
+from .notifications import send_sync_alert
 
 class SyncMonitor:
     def __init__(self):
