@@ -6,7 +6,9 @@
 set -e
 
 # Configuration
-LOG_DIR="/home/n8n/pipedrive-chatwoot-sync/logs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+LOG_DIR="$PROJECT_DIR/logs"
 DOCKER_LOG_DIR="/var/lib/docker/containers"
 MAX_LOG_SIZE="100M"
 MAX_LOG_FILES=10
@@ -18,11 +20,11 @@ echo "=================================================="
 # Function to check disk usage
 check_disk_usage() {
     echo "📊 Current Disk Usage:"
-    df -h /home/n8n
+    df -h "$PROJECT_DIR"
     echo ""
     
     echo "📁 Directory Sizes:"
-    du -sh /home/n8n/pipedrive-chatwoot-sync/* 2>/dev/null || true
+    du -sh "$PROJECT_DIR"/* 2>/dev/null || true
     echo ""
 }
 
@@ -53,17 +55,17 @@ setup_log_rotation() {
     
     # Create logrotate configuration
     sudo tee /etc/logrotate.d/pipedrive-chatwoot-sync > /dev/null <<EOF
-/home/n8n/pipedrive-chatwoot-sync/logs/*.log {
+$PROJECT_DIR/logs/*.log {
     daily
     missingok
     rotate $MAX_LOG_FILES
     compress
     delaycompress
     notifempty
-    create 644 n8n n8n
+    create 644 ubuntu ubuntu
     postrotate
         # Restart sync service if running
-        cd /home/n8n/pipedrive-chatwoot-sync && docker-compose restart sync-app 2>/dev/null || true
+        cd $PROJECT_DIR && docker-compose restart sync-app 2>/dev/null || true
     endscript
 }
 EOF
@@ -88,12 +90,14 @@ setup_memory_limits() {
     echo "💾 Setting up memory limits..."
     
     # Update docker-compose.yml with memory limits
-    if [ -f "/home/n8n/pipedrive-chatwoot-sync/docker-compose.yml" ]; then
+    if [ -f "$PROJECT_DIR/docker-compose.yml" ]; then
         # Backup original
-        cp /home/n8n/pipedrive-chatwoot-sync/docker-compose.yml /home/n8n/pipedrive-chatwoot-sync/docker-compose.yml.backup
+        cp "$PROJECT_DIR/docker-compose.yml" "$PROJECT_DIR/docker-compose.yml.backup"
         
-        # Add memory limits to services
-        sed -i '/sync-app:/a\    deploy:\n      resources:\n        limits:\n          memory: 512M\n        reservations:\n          memory: 256M' /home/n8n/pipedrive-chatwoot-sync/docker-compose.yml
+        # Add memory limits to services (if not already present)
+        if ! grep -q "memory: 512M" "$PROJECT_DIR/docker-compose.yml"; then
+            sed -i '/sync-app:/a\    deploy:\n      resources:\n        limits:\n          memory: 512M\n        reservations:\n          memory: 256M' "$PROJECT_DIR/docker-compose.yml"
+        fi
         
         echo "✅ Memory limits configured for sync-app (512M limit, 256M reservation)"
     fi
@@ -102,11 +106,9 @@ setup_memory_limits() {
 # Function to create cleanup cron job
 setup_cleanup_cron() {
     echo "⏰ Setting up cleanup cron job..."
-    
-    # Add cleanup job to crontab
-    (crontab -l 2>/dev/null; echo "0 2 * * * /home/n8n/pipedrive-chatwoot-sync/scripts/storage-management.sh cleanup") | crontab -
-    
-    echo "✅ Cleanup cron job scheduled for 2 AM daily"
+    echo "   Note: Use ./scripts/setup-cron.sh for comprehensive cron setup"
+    echo "   This function is deprecated in favor of setup-cron.sh"
+    echo "✅ Cleanup cron job setup delegated to setup-cron.sh"
 }
 
 # Function to monitor storage
