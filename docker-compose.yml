@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: pipedrive-chatwoot-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password_2024}
+      MYSQL_DATABASE: pipedrive_chatwoot_sync
+      MYSQL_USER: sync_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sync_password_2024}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./mysql/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+    networks:
+      - sync_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  sync-app:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    build: ./app
+    container_name: pipedrive-chatwoot-sync
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # API Keys (set these in .env file)
+      PIPEDRIVE_API_KEY: ${PIPEDRIVE_API_KEY}
+      CHATWOOT_API_KEY: ${CHATWOOT_API_KEY}
+      
+      # Database Configuration
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: sync_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sync_password_2024}
+      MYSQL_DATABASE: pipedrive_chatwoot_sync
+      
+      # API URLs
+      CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:-https://support.liveport.com.au/api/v1/accounts/2}
+      PIPEDRIVE_BASE_URL: ${PIPEDRIVE_BASE_URL:-https://api.pipedrive.com/v1}
+      
+      # Sync Configuration
+      BATCH_SIZE: ${BATCH_SIZE:-50}
+      RETRY_ATTEMPTS: ${RETRY_ATTEMPTS:-3}
+      RETRY_DELAY: ${RETRY_DELAY:-5}
+      DEFAULT_COUNTRY_CODE: ${DEFAULT_COUNTRY_CODE:-+61}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - sync_network
+    # Use clean sync script
+    command: ["python", "sync.py"]
+
+  # Optional: Database admin interface
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: pipedrive-chatwoot-phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: sync_user
+      PMA_PASSWORD: ${MYSQL_PASSWORD:-sync_password_2024}
+    ports:
+      - "8080:80"
+    networks:
+      - sync_network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  sync_network:
+    driver: bridge
