@@ -24,12 +24,6 @@ services:
       retries: 10
 
   sync-app:
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
     build: ./app
     container_name: pipedrive-chatwoot-sync
     restart: unless-stopped
