@@ -14,6 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY sync.py .
+COPY logging_config.py .
+COPY notifications.py .
+COPY monitor.py .
 
 # Create logs directory
 RUN mkdir -p /app/logs
