@@ -12,7 +12,11 @@ import json
 import logging
 import requests
 import pymysql
+import pymysql.cursors
 from datetime import datetime
+sys.path.append('/app')
+from logging_config import get_sync_logger, log_with_extra
+from notifications import send_sync_alert
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -35,19 +39,8 @@ DB_CONFIG = {
 }
 
 def setup_logging():
-    """Set up logging"""
-    log_dir = "/home/n8n/pipedrive-chatwoot-sync/logs"
-    os.makedirs(log_dir, exist_ok=True)
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(f"{log_dir}/sync.log"),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-    return logging.getLogger(__name__)
+    """Set up logging using centralized configuration"""
+    return get_sync_logger()
 
 def get_db_connection():
     """Get database connection"""
@@ -287,6 +280,49 @@ def sync_to_chatwoot():
             conn.commit()
             logger.info(f"Sync completed: {synced_count} synced, {error_count} errors")
             
+            try:
+                with conn.cursor() as log_cursor:
+                    total_processed = synced_count + error_count
+                    status = 'success' if error_count == 0 else ('partial' if synced_count > 0 else 'error')
+                    
+                    log_cursor.execute("""
+                        INSERT INTO sync_log (sync_type, status, records_processed, records_synced, error_message, completed_at)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (
+                        'organizations',
+                        status,
+                        total_processed,
+                        synced_count,
+                        f"{error_count} errors occurred" if error_count > 0 else None,
+                        datetime.now()
+                    ))
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Failed to log sync results: {e}")
+            
+            if total_processed > 0:
+                error_rate = (error_count / total_processed) * 100
+                if error_rate > 10:  # Alert if more than 10% errors
+                    send_sync_alert(
+                        'sync',
+                        'high error rate',
+                        f"Sync completed with high error rate: {error_rate:.1f}%",
+                        {
+                            'total_processed': total_processed,
+                            'synced_count': synced_count,
+                            'error_count': error_count,
+                            'error_rate': f"{error_rate:.1f}%"
+                        },
+                        'WARNING'
+                    )
+            
+            log_with_extra(logger, 20, "Sync operation completed", {
+                'synced_count': synced_count,
+                'error_count': error_count,
+                'total_processed': total_processed,
+                'error_rate': f"{(error_count / total_processed * 100):.1f}%" if total_processed > 0 else "0%"
+            })
+            
     finally:
         conn.close()
 
@@ -297,23 +333,43 @@ def main():
     logger.info("🚀 Starting Pipedrive to Chatwoot sync")
     logger.info("=" * 50)
     
-    # Step 1: Get Customer organizations from Pipedrive
-    logger.info("📥 Fetching Customer organizations from Pipedrive...")
-    organizations = get_customer_organizations()
-    
-    if not organizations:
-        logger.error("❌ No Customer organizations found")
-        return
-    
-    # Step 2: Store in database
-    logger.info("💾 Storing organizations in database...")
-    store_organizations(organizations)
-    
-    # Step 3: Sync to Chatwoot
-    logger.info("🔄 Syncing organizations to Chatwoot...")
-    sync_to_chatwoot()
-    
-    logger.info("✅ Sync completed!")
+    try:
+        # Step 1: Get Customer organizations from Pipedrive
+        logger.info("📥 Fetching Customer organizations from Pipedrive...")
+        organizations = get_customer_organizations()
+        
+        if not organizations:
+            logger.error("❌ No Customer organizations found")
+            send_sync_alert(
+                'sync',
+                'no data',
+                "No Customer organizations found in Pipedrive",
+                {'label_filter': 5},
+                'WARNING'
+            )
+            return
+        
+        # Step 2: Store in database
+        logger.info("💾 Storing organizations in database...")
+        store_organizations(organizations)
+        
+        # Step 3: Sync to Chatwoot
+        logger.info("🔄 Syncing organizations to Chatwoot...")
+        sync_to_chatwoot()
+        
+        logger.info("✅ Sync completed!")
+        
+    except Exception as e:
+        error_msg = f"Sync process failed with critical error: {e}"
+        logger.error(error_msg)
+        send_sync_alert(
+            'sync',
+            'system error',
+            error_msg,
+            {'error': str(e)},
+            'ERROR'
+        )
+        raise
 
 if __name__ == "__main__":
     main()

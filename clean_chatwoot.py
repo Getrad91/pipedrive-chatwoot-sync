@@ -50,12 +50,20 @@ def delete_contact(contact_id, contact_name):
     url = f"{CHATWOOT_BASE_URL}/contacts/{contact_id}"
     headers = {'Api-Access-Token': CHATWOOT_API_KEY}
     
-    response = requests.delete(url, headers=headers, timeout=30)
-    
-    if response.status_code in [200, 204]:
-        return True
-    else:
-        print(f"❌ Failed to delete {contact_name}: {response.status_code}")
+    try:
+        response = requests.delete(url, headers=headers, timeout=30)
+        
+        if response.status_code in [200, 204]:
+            return True
+        else:
+            logger.warning(f"Failed to delete {contact_name}: {response.status_code}")
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error deleting {contact_name}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error deleting {contact_name}: {e}")
         return False
 
 def main():
