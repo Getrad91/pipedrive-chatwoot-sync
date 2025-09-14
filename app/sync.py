@@ -50,8 +50,57 @@ def get_db_connection():
     return pymysql.connect(**DB_CONFIG)
 
 
+def get_organization_phone_number(org_id):
+    """Get phone number for an organization from its associated persons"""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        params = {
+            'api_token': PIPEDRIVE_API_KEY,
+            'org_id': org_id
+        }
+        
+        response = requests.get(f"{PIPEDRIVE_BASE_URL}/persons", params=params, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        persons = data.get('data', [])
+        
+        for person in persons:
+            phone_data = person.get('phone', [])
+            if phone_data and isinstance(phone_data, list):
+                primary_phone = None
+                first_phone = None
+                
+                for phone_entry in phone_data:
+                    if isinstance(phone_entry, dict):
+                        phone_value = phone_entry.get('value', '').strip()
+                        if phone_value:
+                            if not first_phone:
+                                first_phone = phone_value
+                            if phone_entry.get('primary', False):
+                                primary_phone = phone_value
+                                break
+                
+                if primary_phone:
+                    logger.info(f"Found primary phone for org {org_id}: {primary_phone}")
+                    return primary_phone
+                elif first_phone:
+                    logger.info(f"Found phone for org {org_id}: {first_phone}")
+                    return first_phone
+        
+        logger.info(f"No phone number found for org {org_id}")
+        return ""
+        
+    except Exception as e:
+        logger.error(f"Error fetching phone for org {org_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return ""
+
+
 def get_customer_organizations():
-    """Get all Customer organizations from Pipedrive"""
+    """Get all Customer organizations from Pipedrive with phone numbers from associated persons"""
     logger = logging.getLogger(__name__)
     organizations = []
     start = 0
@@ -73,6 +122,16 @@ def get_customer_organizations():
 
             # Filter for Customer organizations only (label 5)
             customer_orgs = [org for org in page_orgs if org.get('label') == 5]
+            
+            for org in customer_orgs:
+                org_id = org['id']
+                org_name = org.get('name', 'Unknown')
+                logger.info(f"Fetching phone for org {org_id}: {org_name}")
+                phone = get_organization_phone_number(org_id)
+                org['phone'] = phone
+                logger.info(f"Org {org_id} ({org_name}) phone: {repr(phone)}")
+                time.sleep(0.5)  # Rate limiting for person API calls
+            
             organizations.extend(customer_orgs)
 
             logger.info(f"Page {start // limit + 1}: Found {len(customer_orgs)} Customer organizations")
@@ -112,15 +171,25 @@ def clean_organization_data(org):
 
 
 def normalize_phone(phone):
-    """Normalize phone number"""
+    """Normalize phone number to Australian format"""
     if not phone:
         return ""
+    
+    phone = "".join(c for c in phone if c.isdigit() or c in "+() -")
+    
     phone = "".join(c for c in phone if c.isdigit() or c == "+")
+    
+    if not phone:
+        return ""
+    
     if not phone.startswith("+"):
-        phone = "+61" + phone.lstrip("0")
+        phone = phone.lstrip("0")
+        phone = "+61" + phone
+    
     digits = "".join(c for c in phone if c.isdigit())
     if len(digits) < 8 or len(digits) > 15:
         return ""
+    
     return phone
 
 
@@ -131,10 +200,9 @@ def store_organizations(organizations):
 
     try:
         with conn.cursor() as cursor:
-            # Clear existing data
-            cursor.execute("DELETE FROM organizations")
+            cursor.execute("TRUNCATE TABLE organizations")
 
-            # Insert new data
+            # Insert new data in batches to avoid long transactions
             sql = """
             INSERT INTO organizations
               (pipedrive_org_id, name, phone, support_link, city, country,
@@ -146,10 +214,16 @@ def store_organizations(organizations):
                %(notes)s, %(deal_title)s, %(owner_name)s, 0)
             """
 
-            for org in organizations:
-                cursor.execute(sql, clean_organization_data(org))
+            batch_size = int(os.getenv('BATCH_SIZE', 50))
+            for i in range(0, len(organizations), batch_size):
+                batch = organizations[i:i + batch_size]
+                for org in batch:
+                    cleaned_data = clean_organization_data(org)
+                    logger.debug(f"Storing org {cleaned_data['name']} with phone: {repr(cleaned_data['phone'])}")
+                    cursor.execute(sql, cleaned_data)
+                conn.commit()  # Commit each batch
+                logger.info(f"Stored batch {i//batch_size + 1}: {len(batch)} organizations")
 
-            conn.commit()
             logger.info(f"Stored {len(organizations)} organizations in database")
 
     finally:
@@ -189,6 +263,7 @@ def sync_to_chatwoot():
 
             synced_count = 0
             error_count = 0
+            used_phone_numbers = set()
 
             for org in organizations:
                 try:
@@ -213,10 +288,17 @@ def sync_to_chatwoot():
                         if contacts:
                             existing_contact = contacts[0]
 
+                    # Handle duplicate phone numbers by making them optional for subsequent organizations
+                    normalized_phone = org['phone'] if org['phone'] else None
+                    if normalized_phone and normalized_phone in used_phone_numbers:
+                        logger.info(f"Phone number {normalized_phone} already used, syncing {org['name']} without phone number")
+                        normalized_phone = None  # Don't include phone for duplicates
+                    elif normalized_phone:
+                        used_phone_numbers.add(normalized_phone)
+
                     # Prepare contact data
                     contact_data = {
                         'name': org['name'],
-                        'phone_number': org['phone'] if org['phone'] else None,
                         'custom_attributes': {
                             'pipedrive_org_id': org['pipedrive_org_id'],
                             'type': 'organization',
@@ -228,6 +310,9 @@ def sync_to_chatwoot():
                             'organization_name': org['name']
                         }
                     }
+                    
+                    if normalized_phone:
+                        contact_data['phone_number'] = normalized_phone
 
                     # Create or update contact
                     time.sleep(1)  # Rate limiting
