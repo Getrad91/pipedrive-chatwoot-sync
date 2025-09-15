@@ -51,10 +51,33 @@ def get_db_connection():
 
 
 def get_organization_phone_number(org_id):
-    """Get phone number for an organization from its associated persons"""
+    """Get phone number for an organization from custom fields first, then associated persons"""
     logger = logging.getLogger(__name__)
 
     try:
+        # Step 1: Check organization-level custom fields first
+        org_params = {'api_token': PIPEDRIVE_API_KEY}
+        org_response = requests.get(f"{PIPEDRIVE_BASE_URL}/organizations/{org_id}",
+                                    params=org_params, timeout=30)
+        if org_response.status_code == 200:
+            org_data = org_response.json().get('data', {})
+
+            main_phone_hash = 'a677b0cd218332b9f490ce565603a8d2efc2ff65'
+            main_phone = org_data.get(main_phone_hash, '').strip()
+
+            if main_phone:
+                logger.info(f"Found Main Phone Number custom field for org {org_id}: {main_phone}")
+                return main_phone
+
+            for key, value in org_data.items():
+                if value and isinstance(value, str):
+                    if ('phone' in key.lower() or 'main' in key.lower()) and any(char.isdigit() for char in value):
+                        logger.info(f"Found phone in custom field {key} for org {org_id}: {value}")
+                        return value.strip()
+
+        # Step 2: Fall back to person-level phone data (existing logic)
+        logger.debug(f"No organization-level phone found for org {org_id}, checking persons...")
+
         params = {
             'api_token': PIPEDRIVE_API_KEY,
             'org_id': org_id
@@ -83,10 +106,10 @@ def get_organization_phone_number(org_id):
                                 break
 
                 if primary_phone:
-                    logger.info(f"Found primary phone for org {org_id}: {primary_phone}")
+                    logger.info(f"Found primary phone from person for org {org_id}: {primary_phone}")
                     return primary_phone
                 elif first_phone:
-                    logger.info(f"Found phone for org {org_id}: {first_phone}")
+                    logger.info(f"Found phone from person for org {org_id}: {first_phone}")
                     return first_phone
 
         logger.info(f"No phone number found for org {org_id}")
@@ -100,62 +123,97 @@ def get_organization_phone_number(org_id):
 
 
 def get_organizations_phone_numbers_batch(org_ids):
-    """Get phone numbers for multiple organizations in batches to reduce API calls"""
+    """Get phone numbers for multiple organizations, checking custom fields first, then persons"""
     logger = logging.getLogger(__name__)
     phone_map = {}
-    batch_size = 20  # Process in smaller batches to avoid URL length limits
 
-    for i in range(0, len(org_ids), batch_size):
-        batch_org_ids = org_ids[i:i + batch_size]
-
+    # First, check organization-level custom fields for all organizations
+    logger.info("Checking organization-level custom fields for phone numbers...")
+    for org_id in org_ids:
         try:
-            params = {
-                'api_token': PIPEDRIVE_API_KEY,
-                'org_id': ','.join(batch_org_ids),
-                'limit': 500  # Increase limit to get more persons per request
-            }
+            org_params = {'api_token': PIPEDRIVE_API_KEY}
+            org_response = requests.get(f"{PIPEDRIVE_BASE_URL}/organizations/{org_id}",
+                                        params=org_params, timeout=30)
+            if org_response.status_code == 200:
+                org_data = org_response.json().get('data', {})
 
-            response = requests.get(f"{PIPEDRIVE_BASE_URL}/persons", params=params, timeout=30)
-            response.raise_for_status()
+                main_phone_hash = 'a677b0cd218332b9f490ce565603a8d2efc2ff65'
+                main_phone = org_data.get(main_phone_hash, '').strip()
 
-            data = response.json()
-            persons = data.get('data', [])
+                if main_phone:
+                    phone_map[org_id] = main_phone
+                    logger.info(f"Found Main Phone Number custom field for org {org_id}: {main_phone}")
+                    continue
 
-            logger.info(f"Batch {i // batch_size + 1}: Fetched {len(persons)} persons "
-                        f"for {len(batch_org_ids)} organizations")
+                for key, value in org_data.items():
+                    if value and isinstance(value, str):
+                        if ('phone' in key.lower() or 'main' in key.lower()) and any(char.isdigit() for char in value):
+                            phone_map[org_id] = value.strip()
+                            logger.info(f"Found phone in custom field {key} for org {org_id}: {value}")
+                            break
 
-            org_phones = {}
-            for person in persons:
-                org_id = person.get('org_id', {})
-                if isinstance(org_id, dict):
-                    org_id_value = str(org_id.get('value', ''))
-                else:
-                    org_id_value = str(org_id) if org_id else ''
-
-                if org_id_value and org_id_value in batch_org_ids:
-                    phone_data = person.get('phone', [])
-                    if phone_data and isinstance(phone_data, list):
-                        for phone_entry in phone_data:
-                            if isinstance(phone_entry, dict):
-                                phone_value = phone_entry.get('value', '').strip()
-                                if phone_value:
-                                    if org_id_value not in org_phones:
-                                        org_phones[org_id_value] = phone_value
-                                    elif phone_entry.get('primary', False):
-                                        org_phones[org_id_value] = phone_value
-                                        break
-
-            phone_map.update(org_phones)
-
-            if i + batch_size < len(org_ids):
-                time.sleep(1)
+            time.sleep(0.2)  # Small delay to avoid rate limiting
 
         except Exception as e:
-            logger.error(f"Error fetching phones for batch {i // batch_size + 1}: {e}")
-            for org_id in batch_org_ids:
-                if org_id not in phone_map:
-                    phone_map[org_id] = get_organization_phone_number(org_id)
-                    time.sleep(0.5)
+            logger.error(f"Error checking custom fields for org {org_id}: {e}")
+
+    remaining_org_ids = [org_id for org_id in org_ids if org_id not in phone_map]
+
+    if remaining_org_ids:
+        logger.info(f"Checking person-level phone data for {len(remaining_org_ids)} organizations...")
+        batch_size = 20  # Process in smaller batches to avoid URL length limits
+
+        for i in range(0, len(remaining_org_ids), batch_size):
+            batch_org_ids = remaining_org_ids[i:i + batch_size]
+
+            try:
+                params = {
+                    'api_token': PIPEDRIVE_API_KEY,
+                    'org_id': ','.join(batch_org_ids),
+                    'limit': 500  # Increase limit to get more persons per request
+                }
+
+                response = requests.get(f"{PIPEDRIVE_BASE_URL}/persons", params=params, timeout=30)
+                response.raise_for_status()
+
+                data = response.json()
+                persons = data.get('data', [])
+
+                logger.info(f"Person batch {i // batch_size + 1}: Fetched {len(persons)} persons "
+                            f"for {len(batch_org_ids)} organizations")
+
+                org_phones = {}
+                for person in persons:
+                    org_id = person.get('org_id', {})
+                    if isinstance(org_id, dict):
+                        org_id_value = str(org_id.get('value', ''))
+                    else:
+                        org_id_value = str(org_id) if org_id else ''
+
+                    if org_id_value and org_id_value in batch_org_ids:
+                        phone_data = person.get('phone', [])
+                        if phone_data and isinstance(phone_data, list):
+                            for phone_entry in phone_data:
+                                if isinstance(phone_entry, dict):
+                                    phone_value = phone_entry.get('value', '').strip()
+                                    if phone_value:
+                                        if org_id_value not in org_phones:
+                                            org_phones[org_id_value] = phone_value
+                                        elif phone_entry.get('primary', False):
+                                            org_phones[org_id_value] = phone_value
+                                            break
+
+                phone_map.update(org_phones)
+
+                if i + batch_size < len(remaining_org_ids):
+                    time.sleep(1)
+
+            except Exception as e:
+                logger.error(f"Error fetching phones for person batch {i // batch_size + 1}: {e}")
+                for org_id in batch_org_ids:
+                    if org_id not in phone_map:
+                        phone_map[org_id] = get_organization_phone_number(org_id)
+                        time.sleep(0.5)
 
     logger.info(f"Retrieved phone numbers for {len(phone_map)} out of {len(org_ids)} organizations")
     return phone_map
