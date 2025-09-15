@@ -57,19 +57,18 @@ def get_organization_phone_number(org_id):
     try:
         # Step 1: Check organization-level custom fields first
         org_params = {'api_token': PIPEDRIVE_API_KEY}
-        org_response = requests.get(f"{PIPEDRIVE_BASE_URL}/organizations/{org_id}", 
-                                   params=org_params, timeout=30)
-        
+        org_response = requests.get(f"{PIPEDRIVE_BASE_URL}/organizations/{org_id}",
+                                    params=org_params, timeout=30)
         if org_response.status_code == 200:
             org_data = org_response.json().get('data', {})
-            
+
             main_phone_hash = 'a677b0cd218332b9f490ce565603a8d2efc2ff65'
             main_phone = org_data.get(main_phone_hash, '').strip()
-            
+
             if main_phone:
                 logger.info(f"Found Main Phone Number custom field for org {org_id}: {main_phone}")
                 return main_phone
-            
+
             for key, value in org_data.items():
                 if value and isinstance(value, str):
                     if ('phone' in key.lower() or 'main' in key.lower()) and any(char.isdigit() for char in value):
@@ -78,7 +77,7 @@ def get_organization_phone_number(org_id):
 
         # Step 2: Fall back to person-level phone data (existing logic)
         logger.debug(f"No organization-level phone found for org {org_id}, checking persons...")
-        
+
         params = {
             'api_token': PIPEDRIVE_API_KEY,
             'org_id': org_id
@@ -127,40 +126,39 @@ def get_organizations_phone_numbers_batch(org_ids):
     """Get phone numbers for multiple organizations, checking custom fields first, then persons"""
     logger = logging.getLogger(__name__)
     phone_map = {}
-    
+
     # First, check organization-level custom fields for all organizations
     logger.info("Checking organization-level custom fields for phone numbers...")
     for org_id in org_ids:
         try:
             org_params = {'api_token': PIPEDRIVE_API_KEY}
-            org_response = requests.get(f"{PIPEDRIVE_BASE_URL}/organizations/{org_id}", 
-                                       params=org_params, timeout=30)
-            
+            org_response = requests.get(f"{PIPEDRIVE_BASE_URL}/organizations/{org_id}",
+                                        params=org_params, timeout=30)
             if org_response.status_code == 200:
                 org_data = org_response.json().get('data', {})
-                
+
                 main_phone_hash = 'a677b0cd218332b9f490ce565603a8d2efc2ff65'
                 main_phone = org_data.get(main_phone_hash, '').strip()
-                
+
                 if main_phone:
                     phone_map[org_id] = main_phone
                     logger.info(f"Found Main Phone Number custom field for org {org_id}: {main_phone}")
                     continue
-                
+
                 for key, value in org_data.items():
                     if value and isinstance(value, str):
                         if ('phone' in key.lower() or 'main' in key.lower()) and any(char.isdigit() for char in value):
                             phone_map[org_id] = value.strip()
                             logger.info(f"Found phone in custom field {key} for org {org_id}: {value}")
                             break
-            
+
             time.sleep(0.2)  # Small delay to avoid rate limiting
-            
+
         except Exception as e:
             logger.error(f"Error checking custom fields for org {org_id}: {e}")
-    
+
     remaining_org_ids = [org_id for org_id in org_ids if org_id not in phone_map]
-    
+
     if remaining_org_ids:
         logger.info(f"Checking person-level phone data for {len(remaining_org_ids)} organizations...")
         batch_size = 20  # Process in smaller batches to avoid URL length limits
