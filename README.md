@@ -263,7 +263,7 @@ To set up all automated tasks:
 ```
 
 #### Scheduled Jobs
-- **Main sync**: Every 30 minutes during business hours (8am-5pm, weekdays)
+- **Main sync**: Every hour during business hours (8am-5pm, weekdays)
 - **Storage cleanup**: Daily at 2 AM
 - **Storage monitoring**: Every 4 hours  
 - **Database backup**: Daily at 3 AM

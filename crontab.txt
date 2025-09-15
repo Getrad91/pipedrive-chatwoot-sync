@@ -1,5 +1,5 @@
 
-*/30 8-17 * * 1-5 cd /home/ubuntu/repos/pipedrive-chatwoot-sync && ./scripts/auto-sync.sh
+0 8-17 * * 1-5 cd /home/ubuntu/repos/pipedrive-chatwoot-sync && ./scripts/auto-sync.sh
 
 0 2 * * * cd /home/ubuntu/repos/pipedrive-chatwoot-sync && ./scripts/storage-management.sh cleanup >> /home/ubuntu/repos/pipedrive-chatwoot-sync/logs/storage-cleanup.log 2>&1
 

@@ -81,6 +81,13 @@ CREATE TABLE IF NOT EXISTS sync_log (
     INDEX idx_started_at (started_at)
 );
 
+CREATE TABLE IF NOT EXISTS sync_metadata (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sync_type VARCHAR(50) NOT NULL UNIQUE,
+    last_sync_timestamp TIMESTAMP NULL,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 -- Create dedicated user for the sync application
 CREATE USER IF NOT EXISTS 'sync_user'@'%' IDENTIFIED BY 'sync_password_2024';
 GRANT SELECT, INSERT, UPDATE, DELETE ON pipedrive_chatwoot_sync.* TO 'sync_user'@'%';
