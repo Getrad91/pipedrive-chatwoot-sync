@@ -51,10 +51,34 @@ def get_db_connection():
 
 
 def get_organization_phone_number(org_id):
-    """Get phone number for an organization from its associated persons"""
+    """Get phone number for an organization from custom fields first, then associated persons"""
     logger = logging.getLogger(__name__)
 
     try:
+        # Step 1: Check organization-level custom fields first
+        org_params = {'api_token': PIPEDRIVE_API_KEY}
+        org_response = requests.get(f"{PIPEDRIVE_BASE_URL}/organizations/{org_id}", 
+                                   params=org_params, timeout=30)
+        
+        if org_response.status_code == 200:
+            org_data = org_response.json().get('data', {})
+            
+            main_phone_hash = 'a677b0cd218332b9f490ce565603a8d2efc2ff65'
+            main_phone = org_data.get(main_phone_hash, '').strip()
+            
+            if main_phone:
+                logger.info(f"Found Main Phone Number custom field for org {org_id}: {main_phone}")
+                return main_phone
+            
+            for key, value in org_data.items():
+                if value and isinstance(value, str):
+                    if ('phone' in key.lower() or 'main' in key.lower()) and any(char.isdigit() for char in value):
+                        logger.info(f"Found phone in custom field {key} for org {org_id}: {value}")
+                        return value.strip()
+
+        # Step 2: Fall back to person-level phone data (existing logic)
+        logger.debug(f"No organization-level phone found for org {org_id}, checking persons...")
+        
         params = {
             'api_token': PIPEDRIVE_API_KEY,
             'org_id': org_id
@@ -83,10 +107,10 @@ def get_organization_phone_number(org_id):
                                 break
 
                 if primary_phone:
-                    logger.info(f"Found primary phone for org {org_id}: {primary_phone}")
+                    logger.info(f"Found primary phone from person for org {org_id}: {primary_phone}")
                     return primary_phone
                 elif first_phone:
-                    logger.info(f"Found phone for org {org_id}: {first_phone}")
+                    logger.info(f"Found phone from person for org {org_id}: {first_phone}")
                     return first_phone
 
         logger.info(f"No phone number found for org {org_id}")
