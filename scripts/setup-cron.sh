@@ -19,7 +19,7 @@ sed -i '/pipedrive-chatwoot-sync/d' "$TEMP_CRON"
 
 cat >> "$TEMP_CRON" << EOF
 
-*/30 8-17 * * 1-5 cd $PROJECT_DIR && ./scripts/auto-sync.sh
+0 8-17 * * 1-5 cd $PROJECT_DIR && ./scripts/auto-sync.sh
 
 0 2 * * * cd $PROJECT_DIR && ./scripts/storage-management.sh cleanup >> $PROJECT_DIR/logs/storage-cleanup.log 2>&1
 
@@ -45,7 +45,7 @@ fi
 rm "$TEMP_CRON"
 echo ""
 echo "📋 Scheduled jobs:"
-echo "  - Main sync: Every 30 minutes (8am-5pm, weekdays)"
+echo "  - Main sync: Every hour (8am-5pm, weekdays)"
 echo "  - Storage cleanup: Daily at 2 AM"
 echo "  - Storage monitoring: Every 4 hours"
 echo "  - Database backup: Daily at 3 AM"

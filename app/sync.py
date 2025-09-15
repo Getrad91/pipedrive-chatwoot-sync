@@ -99,12 +99,126 @@ def get_organization_phone_number(org_id):
         return ""
 
 
+def get_organizations_phone_numbers_batch(org_ids):
+    """Get phone numbers for multiple organizations in batches to reduce API calls"""
+    logger = logging.getLogger(__name__)
+    phone_map = {}
+    batch_size = 20  # Process in smaller batches to avoid URL length limits
+
+    for i in range(0, len(org_ids), batch_size):
+        batch_org_ids = org_ids[i:i + batch_size]
+
+        try:
+            params = {
+                'api_token': PIPEDRIVE_API_KEY,
+                'org_id': ','.join(batch_org_ids),
+                'limit': 500  # Increase limit to get more persons per request
+            }
+
+            response = requests.get(f"{PIPEDRIVE_BASE_URL}/persons", params=params, timeout=30)
+            response.raise_for_status()
+
+            data = response.json()
+            persons = data.get('data', [])
+
+            logger.info(f"Batch {i // batch_size + 1}: Fetched {len(persons)} persons "
+                        f"for {len(batch_org_ids)} organizations")
+
+            org_phones = {}
+            for person in persons:
+                org_id = person.get('org_id', {})
+                if isinstance(org_id, dict):
+                    org_id_value = str(org_id.get('value', ''))
+                else:
+                    org_id_value = str(org_id) if org_id else ''
+
+                if org_id_value and org_id_value in batch_org_ids:
+                    phone_data = person.get('phone', [])
+                    if phone_data and isinstance(phone_data, list):
+                        for phone_entry in phone_data:
+                            if isinstance(phone_entry, dict):
+                                phone_value = phone_entry.get('value', '').strip()
+                                if phone_value:
+                                    if org_id_value not in org_phones:
+                                        org_phones[org_id_value] = phone_value
+                                    elif phone_entry.get('primary', False):
+                                        org_phones[org_id_value] = phone_value
+                                        break
+
+            phone_map.update(org_phones)
+
+            if i + batch_size < len(org_ids):
+                time.sleep(1)
+
+        except Exception as e:
+            logger.error(f"Error fetching phones for batch {i // batch_size + 1}: {e}")
+            for org_id in batch_org_ids:
+                if org_id not in phone_map:
+                    phone_map[org_id] = get_organization_phone_number(org_id)
+                    time.sleep(0.5)
+
+    logger.info(f"Retrieved phone numbers for {len(phone_map)} out of {len(org_ids)} organizations")
+    return phone_map
+
+
+def get_last_sync_timestamp():
+    """Get the last sync timestamp for incremental sync"""
+    logger = logging.getLogger(__name__)
+    conn = get_db_connection()
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT last_sync_timestamp FROM sync_metadata WHERE sync_type = 'organizations'"
+            )
+            result = cursor.fetchone()
+            if result and result[0]:
+                logger.info(f"Last sync timestamp: {result[0]}")
+                return result[0].strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                logger.info("No previous sync timestamp found, performing full sync")
+                return None
+    except Exception as e:
+        logger.warning(f"Error getting last sync timestamp: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def update_sync_timestamp():
+    """Update the last sync timestamp"""
+    logger = logging.getLogger(__name__)
+    conn = get_db_connection()
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO sync_metadata (sync_type, last_sync_timestamp)
+                VALUES ('organizations', NOW())
+                ON DUPLICATE KEY UPDATE
+                last_sync_timestamp = NOW()
+            """)
+            conn.commit()
+            logger.info("Updated sync timestamp")
+    except Exception as e:
+        logger.error(f"Error updating sync timestamp: {e}")
+    finally:
+        conn.close()
+
+
 def get_customer_organizations():
-    """Get all Customer organizations from Pipedrive with phone numbers from associated persons"""
+    """Get Customer organizations from Pipedrive with incremental sync support"""
     logger = logging.getLogger(__name__)
     organizations = []
     start = 0
     limit = 100
+
+    since_timestamp = get_last_sync_timestamp()
+
+    if since_timestamp:
+        logger.info(f"🔄 Performing incremental sync since: {since_timestamp}")
+    else:
+        logger.info("🔄 Performing full sync (no previous timestamp)")
 
     while True:
         try:
@@ -114,23 +228,31 @@ def get_customer_organizations():
                 'limit': limit
             }
 
+            if since_timestamp:
+                params['since'] = since_timestamp
+
             response = requests.get(f"{PIPEDRIVE_BASE_URL}/organizations", params=params, timeout=30)
             response.raise_for_status()
 
             data = response.json()
             page_orgs = data.get('data', [])
 
+            if not page_orgs:
+                logger.info("No organizations returned from API")
+                break
+
             # Filter for Customer organizations only (label 5)
             customer_orgs = [org for org in page_orgs if org.get('label') == 5]
 
-            for org in customer_orgs:
-                org_id = org['id']
-                org_name = org.get('name', 'Unknown')
-                logger.info(f"Fetching phone for org {org_id}: {org_name}")
-                phone = get_organization_phone_number(org_id)
-                org['phone'] = phone
-                logger.info(f"Org {org_id} ({org_name}) phone: {repr(phone)}")
-                time.sleep(0.5)  # Rate limiting for person API calls
+            if customer_orgs:
+                org_ids = [str(org['id']) for org in customer_orgs]
+                phone_map = get_organizations_phone_numbers_batch(org_ids)
+
+                for org in customer_orgs:
+                    org_id = org['id']
+                    org['phone'] = phone_map.get(str(org_id), '')
+                    logger.debug(f"Org {org_id} ({org.get('name', 'Unknown')}) "
+                                 f"phone: {repr(org['phone'])}")
 
             organizations.extend(customer_orgs)
 
@@ -149,6 +271,10 @@ def get_customer_organizations():
             break
 
     logger.info(f"Total Customer organizations found: {len(organizations)}")
+
+    if organizations or since_timestamp:
+        update_sync_timestamp()
+
     return organizations
 
 
